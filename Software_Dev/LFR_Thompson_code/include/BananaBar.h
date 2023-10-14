@@ -68,16 +68,8 @@ class Bar_Sensors{
       w += sensors_values[i];  
     }
 
-    if(w >= total_sensors*0.5f){ //CHECAR LA FUNCIONALIDAD
-      w = 0.0f;
-      p = 0.0f;
-      for(i=0;i<total_sensors;i++){
-        sensors_values[i] = 1.0f - sensors_values[i];
-        p += sensors_values[i]*sensor_pins->Weighs_curve[i];
-        w += sensors_values[i]; 
-      }
-    } 
-    (w>0.0f)?position = (p/w): position = position;
+
+    (w>0.5f)?position = (p/w): position = position;
   
     return position;
   }
