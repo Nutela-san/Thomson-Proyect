@@ -1,19 +1,20 @@
 #include <Arduino.h>
-#include <BananaBar.h>
+//#include <BananaBar.h>
 //#include <drv8871.h>
+#include <QTRSensors.h>
 #include <TB6612.h>
 #include <InterCom.h>
 #include <CMSIS_DSP.h>
 
-
-const uint8_t led_ind = PB13, starter_pin = PB12;
+const uint8_t led_ind =PC13,  boton = PB0;
+//const uint8_t led_ind = PB13, starter_pin = PB12;
 //const uint8_t m_der_pin[2] = {PB3,PB5}, m_izq_pin[2] = {PA15,PA10};
 
 //drv8871 motorIzq(m_izq_pin[0],m_izq_pin[1]);
 //drv8871 motorDer(m_der_pin[0],m_der_pin[1]);
 TB6612_pinout motors_pinout = {
-  .PWMA_pin = PB3,
-  .AIN2_pin = PB4,
+  .PWMA_pin = PA11,
+  .AIN2_pin = PA1,
   .AIN1_pin = PB5,
   .STBY_pin = PB6,
   .BIN1_pin = PB7,
@@ -21,31 +22,49 @@ TB6612_pinout motors_pinout = {
   .PWMB_pin = PB9
 };
 TB6612 driver_motores(motors_pinout);
-
+/*
 Bar_Sensor_pinout barra_pinout={
   .mux_read_pin = PA3,
   .mux_selec_pins ={PA4,PA5,PA6,PA7},
   .Weighs_curve = {-80,-70,-60,-50,-40,-30,-20,-10,10,20,30,40,50,60,70,80}
 };
 Bar_Sensors barra(&barra_pinout);
+*/
+QTRSensors barra;
+uint16_t vs[8] ={0};
 
 SimpleCommand cmd;
 
 HardwareTimer *pid_INT = new HardwareTimer(TIM10);
-const int hz_control=100;
+const int hz_control= 200;
 
 arm_pid_instance_f32 pid_parametes;
 
 bool check = false, check2 = false;
-float setpoint= 0;
+float setpoint= 65;
 
-#define debug_port SerialUSB
+#define debug_port Serial1
+
+void config_barra(){
+  barra.setTypeAnalog();
+  barra.setSensorPins((const uint8_t[]){PA0, PA1, PA2, PA3, PA4, PA5,PA6,PA7}, 8);
+  barra.setEmitterPin(PC15);
+}
 
 void list(){
   cmd.list();
 }
 
 void calibrarBarra(){
+
+  digitalWrite(led_ind,HIGH);
+  for(uint8_t i = 0; i<100; i++){
+    barra.calibrate();
+    delay(20);
+  }
+  digitalWrite(led_ind,LOW);
+  
+  /*
   digitalWrite(led_ind,HIGH);
   barra.doCalibration();
   digitalWrite(led_ind,LOW);
@@ -60,10 +79,12 @@ void calibrarBarra(){
     debug_port.print("},\t");
   }
   debug_port.println(" ");
+  */
+  
 }
 
 void readpos(){
-  int pos = barra.readPosition();
+  int pos = barra.readLineWhite(vs);//barra.readPosition();
   debug_port.print("barra POS = ");
   debug_port.println(pos);
 }
@@ -94,11 +115,12 @@ void PID_ISR(){
   //unsigned long last_t = micros();   
   //float T;
   if(check){
-    float error = -barra.readPosition();
-    float inc_pwm = (float)arm_pid_f32(&pid_parametes,error);
+    //float error = -barra.readPosition();
+    float error = 35.0f-((float)barra.readLineWhite(vs)/100.0f);
+    float inc_pwm = arm_pid_f32(&pid_parametes,error);
     //motorDer.writePWM((int)(setpoint - inc_pwm));
     //motorIzq.writePWM((int)(setpoint + inc_pwm));
-    driver_motores.setPWM((int)(setpoint - inc_pwm),(int)(setpoint + inc_pwm));
+    driver_motores.setPWM((int)(setpoint + inc_pwm),(int)(setpoint - inc_pwm));
   }
   else{
     //motorDer.writePWM(0);
@@ -135,9 +157,9 @@ void config_timer_interrup(){
 }
 
 void config_PID(){
-  pid_parametes.Kp = 1.0f;
-  pid_parametes.Ki = 0.01f;
-  pid_parametes.Kd = 0.0f;
+  pid_parametes.Kp = 3.0f;
+  pid_parametes.Ki = 0.0f;
+  pid_parametes.Kd = 0.5f;
   arm_pid_init_f32(&pid_parametes,(int32_t)1);
 }
 
@@ -145,9 +167,12 @@ void setup(){
 
   //---Inicializacion de pines---
   pinMode(led_ind,OUTPUT);
-  pinMode(starter_pin,INPUT);
+  //pinMode(starter_pin,INPUT);
+  pinMode(boton,INPUT_PULLUP);
 
-  barra.begin();        //init de barra de sensores
+
+  //barra.begin();        //init de barra de sensores
+  config_barra();
   driver_motores.begin();
   //motorDer.begin(10);   //init de drives para motores DRV8871
   //motorIzq.begin(10);
@@ -163,6 +188,11 @@ void setup(){
   config_commands();
   config_timer_interrup();
   config_PID();
+
+  //while(digitalRead(boton)){
+  //  cmd.listen();
+  //}
+  //calibrarBarra();
 
   pid_INT->resume();  //Iniciando el TIMER para la interupcion del PID
 }
