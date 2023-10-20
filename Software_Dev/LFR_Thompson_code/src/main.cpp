@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <QTRSensors.h>
 #include <TB6612.h>
 #include <InterCom.h>
 #include <CMSIS_DSP.h>
@@ -12,16 +11,16 @@ const uint8_t led_ind =PC13,  boton = PB0;
 //drv8871 motorDer(m_der_pin[0],m_der_pin[1]);
 //uint8_t enc_A_pin[2] = {PA8,PA9}, enc_B_pin[2] = {PB8,PB9};
         //encoder A = motorIZQ    encoderB = derecho
-uint8_t enc_A_pin[2] = {PB14,PB15}, enc_B_pin[2] = {PB13,PB12};
+uint8_t enc_A_pin[2] = {PA8,PA9}, enc_B_pin[2] = {PB9,PB8};
 
 TB6612_pinout motors_pinout = {
-  .PWMA_pin = PB3,
-  .AIN2_pin = PB4,
-  .AIN1_pin = PB5,
-  .STBY_pin = PB6,
-  .BIN1_pin = PB7,
-  .BIN2_pin = PB8,
-  .PWMB_pin = PB9
+  .PWMA_pin = PA10,
+  .AIN2_pin = PA11,
+  .AIN1_pin = PA12,
+  .STBY_pin = PA15,
+  .BIN1_pin = PB3,
+  .BIN2_pin = PB4,
+  .PWMB_pin = PB5
 };
 MotorServo_TB driver_motores(motors_pinout,enc_A_pin,enc_B_pin);
 unsigned int steps_per_rev = 36;
@@ -33,7 +32,7 @@ Bar_Sensor_pinout barra_pinout={
 };
 Bar_Sensors barra(&barra_pinout);
 */
-QTRSensors barra;
+
 uint16_t vs[8] ={0};
 
 SimpleCommand cmd;
@@ -56,9 +55,9 @@ float setpoint = 30;
 #define debug_port Serial1
 
 void config_barra(){
-  barra.setTypeAnalog();
-  barra.setSensorPins((const uint8_t[]){PA0, PA1, PA2, PA3, PA4, PA5,PA6,PA7}, 8);
-  barra.setEmitterPin(PC15);
+  //barra.setTypeAnalog();
+  //barra.setSensorPins((const uint8_t[]){PA0, PA1, PA2, PA3, PA4, PA5,PA6,PA7}, 8);
+  //barra.setEmitterPin(PC15);
 }
 
 void list(){
@@ -67,12 +66,12 @@ void list(){
 
 void calibrarBarra(){
 
-  digitalWrite(led_ind,HIGH);
-  for(uint8_t i = 0; i<100; i++){
-    barra.calibrate();
-    delay(20);
-  }
-  digitalWrite(led_ind,LOW);
+  //for(uint8_t i = 0; i<100; i++){
+  //  barra.calibrate();
+  //  delay(20);
+  //}
+  //digitalWrite(led_ind,HIGH);
+  //digitalWrite(led_ind,LOW);
   
   /*
   digitalWrite(led_ind,HIGH);
@@ -94,9 +93,9 @@ void calibrarBarra(){
 }
 
 void readpos(){
-  int pos = barra.readLineWhite(vs);//barra.readPosition();
-  debug_port.print("barra POS = ");
-  debug_port.println(pos);
+  //int pos = barra.readLineWhite(vs);//barra.readPosition();
+  //debug_port.print("barra POS = ");
+  //debug_port.println(pos);
 }
 
 void doCheck(){
@@ -231,8 +230,8 @@ void setup(){
   //---Inicializacion de protocolos de comunicacion---
   SerialUSB.begin(115200);  
 
-  //Serial1.setTx(PB6);
-  //Serial1.setRx(PB7);
+  Serial1.setTx(PB6);
+  Serial1.setRx(PB7);
   Serial1.begin(9600);
 
   //---Configuracion de la logica---
