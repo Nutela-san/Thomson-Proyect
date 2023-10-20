@@ -1,6 +1,4 @@
 #include <Arduino.h>
-//#include <BananaBar.h>
-//#include <drv8871.h>
 #include <QTRSensors.h>
 #include <TB6612.h>
 #include <InterCom.h>
@@ -12,16 +10,21 @@ const uint8_t led_ind =PC13,  boton = PB0;
 
 //drv8871 motorIzq(m_izq_pin[0],m_izq_pin[1]);
 //drv8871 motorDer(m_der_pin[0],m_der_pin[1]);
+//uint8_t enc_A_pin[2] = {PA8,PA9}, enc_B_pin[2] = {PB8,PB9};
+        //encoder A = motorIZQ    encoderB = derecho
+uint8_t enc_A_pin[2] = {PB14,PB15}, enc_B_pin[2] = {PB13,PB12};
+
 TB6612_pinout motors_pinout = {
-  .PWMA_pin = PA11,
-  .AIN2_pin = PA1,
+  .PWMA_pin = PB3,
+  .AIN2_pin = PB4,
   .AIN1_pin = PB5,
   .STBY_pin = PB6,
   .BIN1_pin = PB7,
   .BIN2_pin = PB8,
   .PWMB_pin = PB9
 };
-TB6612 driver_motores(motors_pinout);
+MotorServo_TB driver_motores(motors_pinout,enc_A_pin,enc_B_pin);
+unsigned int steps_per_rev = 36;
 /*
 Bar_Sensor_pinout barra_pinout={
   .mux_read_pin = PA3,
@@ -36,12 +39,19 @@ uint16_t vs[8] ={0};
 SimpleCommand cmd;
 
 HardwareTimer *pid_INT = new HardwareTimer(TIM10);
-const int hz_control= 200;
+const int hz_control= 100;
 
 arm_pid_instance_f32 pid_parametes;
+arm_pid_instance_f32 pid_Motor_A_parametes;
+arm_pid_instance_f32 pid_Motor_B_parametes;
+volatile float vsetpoint_a = 0;
+volatile float vsetpoint_b = 0;
+float setpoint_a = 0;
+float setpoint_b = 0;
+volatile float vel_A, vel_B;
 
 bool check = false, check2 = false;
-float setpoint= 65;
+float setpoint = 30;
 
 #define debug_port Serial1
 
@@ -97,23 +107,45 @@ void doCheck2(){
   check2 = !check2;
 }
 
+void refresh(){
+  arm_pid_init_f32(&pid_Motor_A_parametes, 1);
+  arm_pid_init_f32(&pid_Motor_B_parametes, 1);
+}
+
 void config_commands(){
   cmd.enable_echo(true);
   cmd.addCommand("list",list);
+  cmd.addCommand("check2",doCheck2);
   cmd.addCommand("check",doCheck);
-  cmd.addCommand("readpos",doCheck2);
+  cmd.addCommand("refresh", refresh);
   cmd.addCommand("cali",calibrarBarra);
-  cmd.addCommand("p",&pid_parametes.Kp);
-  cmd.addCommand("i",&pid_parametes.Ki);
-  cmd.addCommand("d",&pid_parametes.Kd);
+  cmd.addCommand("pa",&pid_Motor_A_parametes.Kp);
+  cmd.addCommand("ia",&pid_Motor_A_parametes.Ki);
+  cmd.addCommand("da",&pid_Motor_A_parametes.Kd);
+  cmd.addCommand("pb",&pid_Motor_B_parametes.Kp);
+  cmd.addCommand("ib",&pid_Motor_B_parametes.Ki);
+  cmd.addCommand("db",&pid_Motor_B_parametes.Kd);
   cmd.addCommand("s",&setpoint);
   cmd.begin(&debug_port);
 }
 
 void PID_ISR(){
-  //debug_port.printf("HOLA soy la interrupcion de %d hz \n",1);
-  //unsigned long last_t = micros();   
-  //float T;
+  vel_A = driver_motores.readVel_A();
+  vel_B = driver_motores.readVel_B();
+
+  if(check){
+    float errorA = vsetpoint_a - vel_A; 
+    float errorB = vsetpoint_b - vel_B; 
+
+    int pwmA = arm_pid_f32(&pid_Motor_A_parametes,errorA);
+    int pwmB = arm_pid_f32(&pid_Motor_B_parametes,errorB);
+    driver_motores.setPWM(pwmA,pwmB);
+  }
+  else{
+    driver_motores.setPWM(0,0);
+  }
+
+  /*
   if(check){
     //float error = -barra.readPosition();
     float error = 35.0f-((float)barra.readLineWhite(vs)/100.0f);
@@ -127,22 +159,28 @@ void PID_ISR(){
     //motorIzq.writePWM(0);
     driver_motores.setPWM(0,0);
   }
-
-  //T = (float)(micros() -last_t);
-  /*
-  debug_port.println("--Control--");
-  debug_port.print("setpoint:");
-  debug_port.print(setpoint,3);
-  debug_port.print(", medicion:");
-  debug_port.print(medicion,3);
-  debug_port.print(", OUT_C:");
-  debug_port.print(out_control,3);
-  //debug_port.print(", T_calulo:");
-  //debug_port.print(T,3);
-  debug_port.print(", hz_C:");
-  debug_port.println(hz_control);
   */
+}
 
+void ISR_encA(){
+  if(digitalRead(driver_motores.encA_B_pin)){
+    driver_motores.enc_steps_A--;
+  }
+  else{
+    driver_motores.enc_steps_A++;
+  }
+  //debug_port.println(driver_motores.enc_steps_A);
+}
+
+void ISR_encB(){
+  if(digitalRead(driver_motores.encB_B_pin)){
+    driver_motores.enc_steps_B--;
+  }
+
+  else{
+    driver_motores.enc_steps_B++;
+  }
+  //debug_port.println(driver_motores.enc_steps_B);
 }
 
 void config_timer_interrup(){
@@ -157,10 +195,23 @@ void config_timer_interrup(){
 }
 
 void config_PID(){
+  /*
   pid_parametes.Kp = 3.0f;
   pid_parametes.Ki = 0.0f;
   pid_parametes.Kd = 0.5f;
-  arm_pid_init_f32(&pid_parametes,(int32_t)1);
+  arm_pid_init_f32(&pid_parametes,(int32_t)1);*/
+
+  //contstantes para s = 50 rad/s sin turbina
+  pid_Motor_A_parametes.Kp = 4.9f;
+  pid_Motor_A_parametes.Ki = 2.5f;
+  pid_Motor_A_parametes.Kd = 0.02f;
+  arm_pid_init_f32(&pid_Motor_A_parametes,1);
+
+  pid_Motor_B_parametes.Kp = 4.0f;
+  pid_Motor_B_parametes.Ki = 1.5f;
+  pid_Motor_B_parametes.Kd = 0.01f;
+  arm_pid_init_f32(&pid_Motor_B_parametes,1);
+  
 }
 
 void setup(){
@@ -173,7 +224,7 @@ void setup(){
 
   //barra.begin();        //init de barra de sensores
   config_barra();
-  driver_motores.begin();
+  driver_motores.begin(hz_control,steps_per_rev,ISR_encA,ISR_encB);
   //motorDer.begin(10);   //init de drives para motores DRV8871
   //motorIzq.begin(10);
   
@@ -189,18 +240,19 @@ void setup(){
   config_timer_interrup();
   config_PID();
 
-  //while(digitalRead(boton)){
-  //  cmd.listen();
-  //}
-  //calibrarBarra();
-
   pid_INT->resume();  //Iniciando el TIMER para la interupcion del PID
 }
 
 void loop(){
   cmd.listen();
   if(check2){
-    readpos();
+    //readpos();
+    debug_port.print("wA = ");
+    debug_port.print(vel_A,3);
+    debug_port.print(",w = ");
+    debug_port.println(vel_B,3);
+    delay(100);
   }
-
+  vsetpoint_a = setpoint;
+  vsetpoint_b = setpoint;
 }
