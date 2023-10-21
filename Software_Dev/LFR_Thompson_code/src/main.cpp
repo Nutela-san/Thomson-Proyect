@@ -1,64 +1,61 @@
 #include <Arduino.h>
-#include <QTRSensors.h>
-#include <TB6612.h>
+#include <BananaBar.h>
+#include <drv8871.h>
+//#include <QTRSensors.h>
+//#include <TB6612.h>
 #include <InterCom.h>
 #include <CMSIS_DSP.h>
 
-const uint8_t led_ind =PC13,  boton = PB0;
-//const uint8_t led_ind = PB13, starter_pin = PB12;
-//const uint8_t m_der_pin[2] = {PB3,PB5}, m_izq_pin[2] = {PA15,PA10};
+//const uint8_t led_ind = PC13,  boton = PB0;
+const uint8_t led_ind = PB13, starter_pin = PB12;
+bool starter = true;
+const uint8_t m_der_pin[2] = {PB0, PB1}, m_izq_pin[2] = {PA2, PA1};
 
-//drv8871 motorIzq(m_izq_pin[0],m_izq_pin[1]);
-//drv8871 motorDer(m_der_pin[0],m_der_pin[1]);
-//uint8_t enc_A_pin[2] = {PA8,PA9}, enc_B_pin[2] = {PB8,PB9};
-        //encoder A = motorIZQ    encoderB = derecho
-uint8_t enc_A_pin[2] = {PB14,PB15}, enc_B_pin[2] = {PB13,PB12};
+drv8871 motorIzq(m_izq_pin[0], m_izq_pin[1]);
+drv8871 motorDer(m_der_pin[0], m_der_pin[1]);
 
-TB6612_pinout motors_pinout = {
-  .PWMA_pin = PB3,
-  .AIN2_pin = PB4,
+/*TB6612_pinout motors_pinout = {
+  .PWMA_pin = PA11,
+  .AIN2_pin = PA1,
   .AIN1_pin = PB5,
   .STBY_pin = PB6,
   .BIN1_pin = PB7,
   .BIN2_pin = PB8,
   .PWMB_pin = PB9
 };
-MotorServo_TB driver_motores(motors_pinout,enc_A_pin,enc_B_pin);
-unsigned int steps_per_rev = 36;
-/*
+TB6612 driver_motores(motors_pinout);*/
+
 Bar_Sensor_pinout barra_pinout={
   .mux_read_pin = PA3,
-  .mux_selec_pins ={PA4,PA5,PA6,PA7},
+  .mux_selec_pins ={PA4, PA5, PA6, PA7},
   .Weighs_curve = {-80,-70,-60,-50,-40,-30,-20,-10,10,20,30,40,50,60,70,80}
 };
 Bar_Sensors barra(&barra_pinout);
-*/
+/*
 QTRSensors barra;
-uint16_t vs[8] ={0};
+uint16_t vs[8] ={0};*/
 
 SimpleCommand cmd;
 
 HardwareTimer *pid_INT = new HardwareTimer(TIM10);
-const int hz_control= 100;
+const int hz_control= 200;
 
 arm_pid_instance_f32 pid_parametes;
-arm_pid_instance_f32 pid_Motor_A_parametes;
-arm_pid_instance_f32 pid_Motor_B_parametes;
-volatile float vsetpoint_a = 0;
-volatile float vsetpoint_b = 0;
-float setpoint_a = 0;
-float setpoint_b = 0;
-volatile float vel_A, vel_B;
 
 bool check = false, check2 = false;
-float setpoint = 30;
+float setpoint= 90;
 
 #define debug_port Serial1
 
+void refresh(){
+  arm_pid_init_f32(&pid_parametes, 1);
+}
+
 void config_barra(){
+  /*
   barra.setTypeAnalog();
   barra.setSensorPins((const uint8_t[]){PA0, PA1, PA2, PA3, PA4, PA5,PA6,PA7}, 8);
-  barra.setEmitterPin(PC15);
+  barra.setEmitterPin(PC15);*/
 }
 
 void list(){
@@ -66,20 +63,21 @@ void list(){
 }
 
 void calibrarBarra(){
-
+  /*
   digitalWrite(led_ind,HIGH);
   for(uint8_t i = 0; i<100; i++){
     barra.calibrate();
     delay(20);
   }
-  digitalWrite(led_ind,LOW);
-  
-  /*
+  digitalWrite(led_ind,LOW);*/
+  motorDer.writePWM(0);
+  motorIzq.writePWM(0);
+
   digitalWrite(led_ind,HIGH);
   barra.doCalibration();
   digitalWrite(led_ind,LOW);
-  debug_port.println("Calibraccion completatada");
-  for(uint8_t i=0;i<total_sensors;i++){
+  debug_port.println("Calibracion completada");
+  for(uint8_t i = 0; i < total_sensors; i++){
     debug_port.print("S");
     debug_port.print(i);
     debug_port.print(" = {");
@@ -89,14 +87,14 @@ void calibrarBarra(){
     debug_port.print("},\t");
   }
   debug_port.println(" ");
-  */
   
 }
 
 void readpos(){
-  int pos = barra.readLineWhite(vs);//barra.readPosition();
-  debug_port.print("barra POS = ");
-  debug_port.println(pos);
+  //int pos = barra.readLineWhite(vs);
+  Serial1.println(barra.readPosition());
+  /*debug_port.print("barra POS = ");
+  debug_port.println(pos);*/
 }
 
 void doCheck(){
@@ -107,80 +105,61 @@ void doCheck2(){
   check2 = !check2;
 }
 
-void refresh(){
-  arm_pid_init_f32(&pid_Motor_A_parametes, 1);
-  arm_pid_init_f32(&pid_Motor_B_parametes, 1);
-}
-
 void config_commands(){
   cmd.enable_echo(true);
   cmd.addCommand("list",list);
-  cmd.addCommand("check2",doCheck2);
   cmd.addCommand("check",doCheck);
-  cmd.addCommand("refresh", refresh);
+  cmd.addCommand("readpos",doCheck2);
   cmd.addCommand("cali",calibrarBarra);
-  cmd.addCommand("pa",&pid_Motor_A_parametes.Kp);
-  cmd.addCommand("ia",&pid_Motor_A_parametes.Ki);
-  cmd.addCommand("da",&pid_Motor_A_parametes.Kd);
-  cmd.addCommand("pb",&pid_Motor_B_parametes.Kp);
-  cmd.addCommand("ib",&pid_Motor_B_parametes.Ki);
-  cmd.addCommand("db",&pid_Motor_B_parametes.Kd);
+  cmd.addCommand("refresh", refresh);
+  cmd.addCommand("p",&pid_parametes.Kp);
+  cmd.addCommand("i",&pid_parametes.Ki);
+  cmd.addCommand("d",&pid_parametes.Kd);
   cmd.addCommand("s",&setpoint);
   cmd.begin(&debug_port);
 }
 
 void PID_ISR(){
-  vel_A = driver_motores.readVel_A();
-  vel_B = driver_motores.readVel_B();
-
+  //debug_port.printf("HOLA soy la interrupcion de %d hz \n",1);
+  //unsigned long last_t = micros();   
+  //float T;
   if(check){
-    float errorA = vsetpoint_a - vel_A; 
-    float errorB = vsetpoint_b - vel_B; 
-
-    int pwmA = arm_pid_f32(&pid_Motor_A_parametes,errorA);
-    int pwmB = arm_pid_f32(&pid_Motor_B_parametes,errorB);
-    driver_motores.setPWM(pwmA,pwmB);
+    float error = -barra.readPosition();
+    //float error = 35.0f-((float)barra.readLineWhite(vs)/100.0f);
+    float inc_pwm = arm_pid_f32(&pid_parametes, error);
+    if(inc_pwm > setpoint) inc_pwm = setpoint;
+    else if (inc_pwm < -setpoint) inc_pwm = -setpoint;
+    if(inc_pwm < 0){
+      motorDer.writePWM((int)(setpoint));
+      motorIzq.writePWM((int)(setpoint - inc_pwm));
+    }
+    else{
+      motorDer.writePWM((int)(setpoint + inc_pwm));
+      motorIzq.writePWM((int)(setpoint));
+    }
+    //driver_motores.setPWM((int)(setpoint + inc_pwm),(int)(setpoint - inc_pwm));
   }
   else{
-    driver_motores.setPWM(0,0);
+    motorDer.writePWM(0);
+    motorIzq.writePWM(0);
+    //driver_motores.setPWM(0,0);
   }
 
+  //T = (float)(micros() -last_t);
   /*
-  if(check){
-    //float error = -barra.readPosition();
-    float error = 35.0f-((float)barra.readLineWhite(vs)/100.0f);
-    float inc_pwm = arm_pid_f32(&pid_parametes,error);
-    //motorDer.writePWM((int)(setpoint - inc_pwm));
-    //motorIzq.writePWM((int)(setpoint + inc_pwm));
-    driver_motores.setPWM((int)(setpoint + inc_pwm),(int)(setpoint - inc_pwm));
-  }
-  else{
-    //motorDer.writePWM(0);
-    //motorIzq.writePWM(0);
-    driver_motores.setPWM(0,0);
-  }
+  debug_port.println("--Control--");
+  debug_port.print("setpoint:");
+  debug_port.print(setpoint,3);
+  debug_port.print(", medicion:");
+  debug_port.print(medicion,3);
+  debug_port.print(", OUT_C:");
+  debug_port.print(out_control,3);
+  //debug_port.print(", T_calulo:");
+  //debug_port.print(T,3);
+  debug_port.print(", hz_C:");
+  debug_port.println(hz_control);
   */
-}
 
-void ISR_encA(){
-  if(digitalRead(driver_motores.encA_B_pin)){
-    driver_motores.enc_steps_A--;
-  }
-  else{
-    driver_motores.enc_steps_A++;
-  }
-  //debug_port.println(driver_motores.enc_steps_A);
-}
-
-void ISR_encB(){
-  if(digitalRead(driver_motores.encB_B_pin)){
-    driver_motores.enc_steps_B--;
-  }
-
-  else{
-    driver_motores.enc_steps_B++;
-  }
-  //debug_port.println(driver_motores.enc_steps_B);
 }
 
 void config_timer_interrup(){
@@ -195,23 +174,10 @@ void config_timer_interrup(){
 }
 
 void config_PID(){
-  /*
-  pid_parametes.Kp = 3.0f;
+  pid_parametes.Kp = 5.0f;
   pid_parametes.Ki = 0.0f;
-  pid_parametes.Kd = 0.5f;
-  arm_pid_init_f32(&pid_parametes,(int32_t)1);*/
-
-  //contstantes para s = 50 rad/s sin turbina
-  pid_Motor_A_parametes.Kp = 4.9f;
-  pid_Motor_A_parametes.Ki = 2.5f;
-  pid_Motor_A_parametes.Kd = 0.02f;
-  arm_pid_init_f32(&pid_Motor_A_parametes,1);
-
-  pid_Motor_B_parametes.Kp = 4.0f;
-  pid_Motor_B_parametes.Ki = 1.5f;
-  pid_Motor_B_parametes.Kd = 0.01f;
-  arm_pid_init_f32(&pid_Motor_B_parametes,1);
-  
+  pid_parametes.Kd = 50.0f;
+  arm_pid_init_f32(&pid_parametes,(int32_t)1);
 }
 
 void setup(){
@@ -219,20 +185,20 @@ void setup(){
   //---Inicializacion de pines---
   pinMode(led_ind,OUTPUT);
   //pinMode(starter_pin,INPUT);
-  pinMode(boton,INPUT_PULLUP);
+  //pinMode(boton,INPUT_PULLUP);
 
 
-  //barra.begin();        //init de barra de sensores
-  config_barra();
-  driver_motores.begin(hz_control,steps_per_rev,ISR_encA,ISR_encB);
-  //motorDer.begin(10);   //init de drives para motores DRV8871
-  //motorIzq.begin(10);
+  barra.begin();        //init de barra de sensores
+  //config_barra();
+  //driver_motores.begin();
+  motorDer.begin();   //init de drives para motores DRV8871
+  motorIzq.begin();
   
   //---Inicializacion de protocolos de comunicacion---
-  SerialUSB.begin(115200);  
+  //SerialUSB.begin(115200);  
 
-  //Serial1.setTx(PB6);
-  //Serial1.setRx(PB7);
+  Serial1.setTx(PB6);
+  Serial1.setRx(PB7);
   Serial1.begin(9600);
 
   //---Configuracion de la logica---
@@ -240,19 +206,31 @@ void setup(){
   config_timer_interrup();
   config_PID();
 
+  //while(digitalRead(boton)){
+  //  cmd.listen();
+  //}
+  //calibrarBarra();
+
   pid_INT->resume();  //Iniciando el TIMER para la interupcion del PID
 }
 
 void loop(){
   cmd.listen();
+  /*if(digitalRead(starter_pin)){
+    while(starter){
+      calibrarBarra();
+      starter = !starter;
+    }
+    check = true;
+  }*/
+
+  /*if(!digitalRead(starter_pin)){
+    motorDer.writePWM(0);
+    motorIzq.writePWM(0);
+  }*/
+
   if(check2){
-    //readpos();
-    debug_port.print("wA = ");
-    debug_port.print(vel_A,3);
-    debug_port.print(",w = ");
-    debug_port.println(vel_B,3);
-    delay(100);
+    readpos();
   }
-  vsetpoint_a = setpoint;
-  vsetpoint_b = setpoint;
+
 }
