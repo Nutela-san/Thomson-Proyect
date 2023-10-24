@@ -20,6 +20,7 @@ public:
         }
         analogWriteResolution(resolution);
         analogWriteFrequency(frequency);
+        sleep();
     }
 
     void writePWM(int driver_pwm){
@@ -37,6 +38,11 @@ public:
             analogWrite(INpins[0], max_value);
             analogWrite(INpins[1], max_value);
         }
+    }
+
+    void sleep(){
+        analogWrite(INpins[0], 0);
+        analogWrite(INpins[1], 0);
     }
 };
 

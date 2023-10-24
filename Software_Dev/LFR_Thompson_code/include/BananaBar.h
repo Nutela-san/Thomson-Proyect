@@ -16,31 +16,36 @@ struct Bar_Sensor_pinout{
 
 class Bar_Sensors{
   public:
-  Bar_Sensor_pinout *sensor_pins;
+  Bar_Sensor_pinout sensor_pins;
   float sensors_values[total_sensors]={0};
   uint16_t maxRangeCalibrated[total_sensors]={0};
   uint16_t minRangeCalibrated[total_sensors]={1024};
   float position;
 
-  Bar_Sensors(Bar_Sensor_pinout *sensor_pins){
+  Bar_Sensors(Bar_Sensor_pinout sensor_pins){
     this->sensor_pins = sensor_pins;
   }
 
   void begin(){
-    pinMode(sensor_pins->mux_read_pin, INPUT);
+    pinMode(sensor_pins.mux_read_pin, INPUT);
     for(uint8_t i=0;i<4;i++){
-      pinMode(sensor_pins->mux_selec_pins[i],OUTPUT);
+      pinMode(sensor_pins.mux_selec_pins[i],OUTPUT);
     }
   }
 
   void readSensors(){
     uint8_t i;
     for(i=0;i<total_sensors;i++){
-      (i & (1<<0)) ? digitalWrite(sensor_pins->mux_selec_pins[0],HIGH) : digitalWrite(sensor_pins->mux_selec_pins[0],LOW);
-      (i & (1<<1)) ? digitalWrite(sensor_pins->mux_selec_pins[1],HIGH) : digitalWrite(sensor_pins->mux_selec_pins[1],LOW);
-      (i & (1<<2)) ? digitalWrite(sensor_pins->mux_selec_pins[2],HIGH) : digitalWrite(sensor_pins->mux_selec_pins[2],LOW);
-      (i & (1<<3)) ? digitalWrite(sensor_pins->mux_selec_pins[3],HIGH) : digitalWrite(sensor_pins->mux_selec_pins[3],LOW);
-      sensors_values[i]= analogRead(sensor_pins->mux_read_pin);
+      int S0 = (i & (1<<0)) ;  digitalWrite ( sensor_pins.mux_selec_pins[0] , S0) ; //Solo quiero el ultimo bit
+      int S1 = ( i >> 1 ) & B00000001 ; digitalWrite ( sensor_pins.mux_selec_pins[1]  , S1) ;
+      int S2 = ( i >> 2 ) & B00000001 ; digitalWrite (sensor_pins.mux_selec_pins[2]  , S2) ;
+      int S3 = ( i >> 3 ) & B00000001 ; digitalWrite (sensor_pins.mux_selec_pins[3]  , S3) ;
+      sensors_values[i]=analogRead(sensor_pins.mux_read_pin);      
+      //(i & (1<<0)) ? digitalWrite(sensor_pins.mux_selec_pins[0],HIGH) : digitalWrite(sensor_pins.mux_selec_pins[0],LOW);
+      //(i & (1<<1)) ? digitalWrite(sensor_pins.mux_selec_pins[1],HIGH) : digitalWrite(sensor_pins.mux_selec_pins[1],LOW);
+      //(i & (1<<2)) ? digitalWrite(sensor_pins.mux_selec_pins[2],HIGH) : digitalWrite(sensor_pins.mux_selec_pins[2],LOW);
+      //(i & (1<<3)) ? digitalWrite(sensor_pins.mux_selec_pins[3],HIGH) : digitalWrite(sensor_pins.mux_selec_pins[3],LOW);
+      //sensors_values[i]= analogRead(sensor_pins.mux_read_pin);
     }
   }
 
@@ -64,12 +69,12 @@ class Bar_Sensors{
     for(i=0; i<total_sensors; i++){
       sensors_values[i] = constrain(sensors_values[i],minRangeCalibrated[i],maxRangeCalibrated[i]);
       sensors_values[i] = map_f(sensors_values[i],minRangeCalibrated[i],maxRangeCalibrated[i],1.0f,0.0f);
-      p += sensors_values[i]*sensor_pins->Weighs_curve[i];
+      p += sensors_values[i]*sensor_pins.Weighs_curve[i];
       w += sensors_values[i];  
     }
 
 
-    (w>0.5f)?position = (p/w): position = position;
+    (w>0.1f)?position = (p/w): position = position;
   
     return position;
   }
