@@ -11,8 +11,8 @@ uint16_t sensorValues[8];
 
 TB6612_pinout motors_pinout = {
   .PWMA_pin = PA10,
-  .AIN2_pin = PA11,
-  .AIN1_pin = PA12,
+  .AIN2_pin = PA8,
+  .AIN1_pin = PA9,
   .STBY_pin = PA15,
   .BIN1_pin = PB4,
   .BIN2_pin = PB3,
@@ -31,9 +31,9 @@ const int hz_control= 200;
 arm_pid_instance_f32 pid_parametes;
 
 bool check = false, check2 = false, check3 = false;
-float setpoint= 0;
+float setpoint=200;
 
-#define debug_port Serial1
+#define debug_port SerialUSB
 
 void refresh(){
   arm_pid_init_f32(&pid_parametes, 1);
@@ -104,18 +104,18 @@ void PID_ISR(){
 
   if(check){
     driver_motores.enableDriver(1);
-    float error = 35.0f-((float)barra.readLineBlack(vs)/100.0f);
+    float error = (3500.0f-(float)barra.readLineBlack(vs))/100.0f;
     float inc_pwm = arm_pid_f32(&pid_parametes, error);
     if(inc_pwm < 0){
-      driver_motores.setPWM((int)(setpoint - inc_pwm), (int)(setpoint));
+      driver_motores.setPWM((int)(setpoint + inc_pwm), (int)(setpoint));
     }
     else{
-      driver_motores.setPWM((int)(setpoint), (int)(setpoint + inc_pwm));
+      driver_motores.setPWM((int)(setpoint), (int)(setpoint - inc_pwm));
     }
   }
   else{
     driver_motores.setPWM(0,0);
-    driver_motores.enableDriver(0);
+    //driver_motores.enableDriver(0);
   }
 
 }
@@ -132,9 +132,9 @@ void config_timer_interrup(){
 }
 
 void config_PID(){
-  pid_parametes.Kp = 2.0f;
+  pid_parametes.Kp = 7.0f;
   pid_parametes.Ki = 0.0f;
-  pid_parametes.Kd = 0.0f;
+  pid_parametes.Kd = 20.0f;
   arm_pid_init_f32(&pid_parametes,(int32_t)1);
 }
 
@@ -145,7 +145,7 @@ void setup(){
 
 
   config_barra();
-
+  driver_motores.begin();
   
   //---Inicializacion de protocolos de comunicacion---
   SerialUSB.begin(115200);  
@@ -159,11 +159,18 @@ void setup(){
   config_timer_interrup();
   config_PID();
 
+  delay(2000);
+  calibrarBarra();
+  while(!digitalRead(starter_pin));
+  driver_motores.enableDriver(true);
+
   pid_INT->resume();  //Iniciando el TIMER para la interupcion del PID
 }
 
 void loop(){
   cmd.listen();
+
+  check = digitalRead(starter_pin);
 
   if(check2){
     values();
