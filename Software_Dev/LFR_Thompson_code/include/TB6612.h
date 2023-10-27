@@ -64,7 +64,7 @@ void TB6612::begin(){
 
   setPWM(0,0);
 
-  enableDriver();
+  enableDriver(false);
 }
 
 void TB6612::enableDriver(bool en){
@@ -85,8 +85,8 @@ void TB6612::setPWM(int pwmA,int pwmB){
     pwmA = abs(pwmA);
   }
   else{
-    digitalWrite(pins.AIN1_pin,LOW);
-    digitalWrite(pins.AIN2_pin,LOW);
+    digitalWrite(pins.AIN1_pin,HIGH);
+    digitalWrite(pins.AIN2_pin,HIGH);
   }
 
   if(pwmB>0){
@@ -99,8 +99,8 @@ void TB6612::setPWM(int pwmA,int pwmB){
     pwmB = abs(pwmB);
   }
   else{
-    digitalWrite(pins.BIN1_pin,LOW);
-    digitalWrite(pins.BIN2_pin,LOW);
+    digitalWrite(pins.BIN1_pin,HIGH);
+    digitalWrite(pins.BIN2_pin,HIGH);
   }
 
   analogWrite(pins.PWMA_pin,pwmA);

@@ -1,101 +1,123 @@
 #include <Arduino.h>
+#include <QTRSensors.h>
+#include <BananaBar.h>
 #include <TB6612.h>
 #include <InterCom.h>
 #include <CMSIS_DSP.h>
+#include <Servo.h>
 
-const uint8_t led_ind =PC13,  boton = PB0;
-//const uint8_t led_ind = PB13, starter_pin = PB12;
-//const uint8_t m_der_pin[2] = {PB3,PB5}, m_izq_pin[2] = {PA15,PA10};
+/*
+  ---PINOUT ver. final v1 , tb6612, para barras de 8 y 16, con encoders---
+*/
+const uint8_t led_pin = PB13, led2_pin = PC13, start_IR_pin = PB12;
+const uint8_t boton_1_pin = PB1, boton_2_pin = PC14 , turbina_pin = PB8;
 
-//drv8871 motorIzq(m_izq_pin[0],m_izq_pin[1]);
-//drv8871 motorDer(m_der_pin[0],m_der_pin[1]);
-//uint8_t enc_A_pin[2] = {PA8,PA9}, enc_B_pin[2] = {PB8,PB9};
-        //encoder A = motorIZQ    encoderB = derecho
-uint8_t enc_A_pin[2] = {PA8,PA9}, enc_B_pin[2] = {PB9,PB8};
 
-TB6612_pinout motors_pinout = {
-  .PWMA_pin = PA10,
-  .AIN2_pin = PA11,
-  .AIN1_pin = PA12,
+uint16_t sensorValues[8];
+
+TB6612_pinout motors_pinout = { 
+  .PWMA_pin = PA8,
+  .AIN2_pin = PA9,
+  .AIN1_pin = PA10,
   .STBY_pin = PA15,
-  .BIN1_pin = PB3,
-  .BIN2_pin = PB4,
+  .BIN1_pin = PB4,
+  .BIN2_pin = PB3,
   .PWMB_pin = PB5
 };
-MotorServo_TB driver_motores(motors_pinout,enc_A_pin,enc_B_pin);
-unsigned int steps_per_rev = 36;
-/*
-Bar_Sensor_pinout barra_pinout={
-  .mux_read_pin = PA3,
-  .mux_selec_pins ={PA4,PA5,PA6,PA7},
+
+const uint8_t enc_izq_pins[2] ={PB14,PB15} , enc_der_pins [2] ={PB10,PB2};
+
+TB6612 driver_motores(motors_pinout);
+/*  //PARA BARRA DE 16 sensores;
+Bar_Sensor_pinout barra_pinout{
+  .mux_read_pin = PA2,
+  .mux_selec_pins = {PA3,PA4,PA5,PA6},
   .Weighs_curve = {-80,-70,-60,-50,-40,-30,-20,-10,10,20,30,40,50,60,70,80}
 };
-Bar_Sensors barra(&barra_pinout);
-*/
+Bar_Sensors barra(&barra_pinout); */
 
+QTRSensors barra;
 uint16_t vs[8] ={0};
 
 SimpleCommand cmd;
 
 HardwareTimer *pid_INT = new HardwareTimer(TIM10);
-const int hz_control= 100;
+const int hz_control= 200;
 
 arm_pid_instance_f32 pid_parametes;
-arm_pid_instance_f32 pid_Motor_A_parametes;
-arm_pid_instance_f32 pid_Motor_B_parametes;
-volatile float vsetpoint_a = 0;
-volatile float vsetpoint_b = 0;
-float setpoint_a = 0;
-float setpoint_b = 0;
-volatile float vel_A, vel_B;
 
-bool check = false, check2 = false;
-float setpoint = 30;
+bool check = false, check2 = false, check3 = false;
+float setpoint=0;
+
+Servo turbina;
+bool en_tubina = false;
+float inc_us = 100;
 
 #define debug_port Serial1
 
-void config_barra(){
-  //barra.setTypeAnalog();
-  //barra.setSensorPins((const uint8_t[]){PA0, PA1, PA2, PA3, PA4, PA5,PA6,PA7}, 8);
-  //barra.setEmitterPin(PC15);
+void refresh(){
+  arm_pid_init_f32(&pid_parametes, 1);
+}
+
+void values(){
+  barra.read(sensorValues);
+  
+  for(int i = 0; i < 8; i++){
+    debug_port.print(sensorValues[i]);
+    debug_port.print("\t");
+  }
+  debug_port.print("\n");
 }
 
 void list(){
   cmd.list();
 }
 
-void calibrarBarra(){
+void config_turbina(){
+  turbina.attach(turbina_pin);
+  turbina.writeMicroseconds(1000);
+}
 
-  //for(uint8_t i = 0; i<100; i++){
-  //  barra.calibrate();
-  //  delay(20);
-  //}
-  //digitalWrite(led_ind,HIGH);
-  //digitalWrite(led_ind,LOW);
-  
-  /*
-  digitalWrite(led_ind,HIGH);
-  barra.doCalibration();
-  digitalWrite(led_ind,LOW);
-  debug_port.println("Calibraccion completatada");
-  for(uint8_t i=0;i<total_sensors;i++){
-    debug_port.print("S");
-    debug_port.print(i);
-    debug_port.print(" = {");
-    debug_port.print(barra.minRangeCalibrated[i]);
-    debug_port.print(",");
-    debug_port.print(barra.maxRangeCalibrated[i]);
-    debug_port.print("},\t");
+void calibrar_tubina(){
+  turbina.writeMicroseconds(1000);
+  delay(1000);
+  turbina.writeMicroseconds(2000);
+  delay(1000);
+  turbina.writeMicroseconds(1000);
+}
+
+void turbina_enable(){
+  en_tubina = !en_tubina;
+  if(en_tubina){
+    for(long i = 0; i<1000;i++){
+      turbina.writeMicroseconds(1000+i);
+      //delay(2);
+    }
+    turbina.writeMicroseconds(2000);
   }
-  debug_port.println(" ");
-  */
-  
+  else{
+    turbina.writeMicroseconds(1000);
+  }
+}
+
+void calibrarBarra(){
+  digitalWrite(led_pin,HIGH);
+  for(uint8_t i = 0; i<100; i++){
+    barra.calibrate();
+    delay(20);
+  }
+  digitalWrite(led_pin,LOW);
+}
+
+void config_barra(){
+  barra.setTypeAnalog();
+  barra.setSensorPins((const uint8_t[]){PA0, PA1, PA2, PA3, PA4, PA5, PA6, PA7}, 8);
+  barra.setEmitterPin(PC15);
 }
 
 void readpos(){
-  //int pos = barra.readLineWhite(vs);//barra.readPosition();
-  //debug_port.print("barra POS = ");
-  //debug_port.println(pos);
+  int pos = barra.readLineBlack(vs);
+  debug_port.println(pos);
 }
 
 void doCheck(){
@@ -106,80 +128,46 @@ void doCheck2(){
   check2 = !check2;
 }
 
-void refresh(){
-  arm_pid_init_f32(&pid_Motor_A_parametes, 1);
-  arm_pid_init_f32(&pid_Motor_B_parametes, 1);
+void doCheck3(){
+  check3 = !check3;
 }
 
 void config_commands(){
   cmd.enable_echo(true);
   cmd.addCommand("list",list);
+  cmd.addCommand("readpos",doCheck3);
   cmd.addCommand("check2",doCheck2);
   cmd.addCommand("check",doCheck);
-  cmd.addCommand("refresh", refresh);
+  cmd.addCommand("enturbina",turbina_enable);
+  cmd.addCommand("turcali", calibrar_tubina);
   cmd.addCommand("cali",calibrarBarra);
-  cmd.addCommand("pa",&pid_Motor_A_parametes.Kp);
-  cmd.addCommand("ia",&pid_Motor_A_parametes.Ki);
-  cmd.addCommand("da",&pid_Motor_A_parametes.Kd);
-  cmd.addCommand("pb",&pid_Motor_B_parametes.Kp);
-  cmd.addCommand("ib",&pid_Motor_B_parametes.Ki);
-  cmd.addCommand("db",&pid_Motor_B_parametes.Kd);
+  cmd.addCommand("refresh", refresh);
+  cmd.addCommand("t",&inc_us);
+  cmd.addCommand("p",&pid_parametes.Kp);
+  cmd.addCommand("i",&pid_parametes.Ki);
+  cmd.addCommand("d",&pid_parametes.Kd);
   cmd.addCommand("s",&setpoint);
   cmd.begin(&debug_port);
 }
 
 void PID_ISR(){
-  vel_A = driver_motores.readVel_A();
-  vel_B = driver_motores.readVel_B();
 
   if(check){
-    float errorA = vsetpoint_a - vel_A; 
-    float errorB = vsetpoint_b - vel_B; 
-
-    int pwmA = arm_pid_f32(&pid_Motor_A_parametes,errorA);
-    int pwmB = arm_pid_f32(&pid_Motor_B_parametes,errorB);
-    driver_motores.setPWM(pwmA,pwmB);
+    driver_motores.enableDriver(1);
+    float error = (3500.0f-(float)barra.readLineBlack(vs))/100.0f;
+    float inc_pwm = arm_pid_f32(&pid_parametes, error);
+    if(inc_pwm < 0){
+      driver_motores.setPWM((int)(setpoint + inc_pwm), (int)(setpoint));
+    }
+    else{
+      driver_motores.setPWM((int)(setpoint), (int)(setpoint - inc_pwm));
+    }
   }
   else{
     driver_motores.setPWM(0,0);
+    //driver_motores.enableDriver(0);
   }
 
-  /*
-  if(check){
-    //float error = -barra.readPosition();
-    float error = 35.0f-((float)barra.readLineWhite(vs)/100.0f);
-    float inc_pwm = arm_pid_f32(&pid_parametes,error);
-    //motorDer.writePWM((int)(setpoint - inc_pwm));
-    //motorIzq.writePWM((int)(setpoint + inc_pwm));
-    driver_motores.setPWM((int)(setpoint + inc_pwm),(int)(setpoint - inc_pwm));
-  }
-  else{
-    //motorDer.writePWM(0);
-    //motorIzq.writePWM(0);
-    driver_motores.setPWM(0,0);
-  }
-  */
-}
-
-void ISR_encA(){
-  if(digitalRead(driver_motores.encA_B_pin)){
-    driver_motores.enc_steps_A--;
-  }
-  else{
-    driver_motores.enc_steps_A++;
-  }
-  //debug_port.println(driver_motores.enc_steps_A);
-}
-
-void ISR_encB(){
-  if(digitalRead(driver_motores.encB_B_pin)){
-    driver_motores.enc_steps_B--;
-  }
-
-  else{
-    driver_motores.enc_steps_B++;
-  }
-  //debug_port.println(driver_motores.enc_steps_B);
 }
 
 void config_timer_interrup(){
@@ -194,38 +182,25 @@ void config_timer_interrup(){
 }
 
 void config_PID(){
-  /*
-  pid_parametes.Kp = 3.0f;
+  pid_parametes.Kp = 15.0f;
   pid_parametes.Ki = 0.0f;
-  pid_parametes.Kd = 0.5f;
-  arm_pid_init_f32(&pid_parametes,(int32_t)1);*/
-
-  //contstantes para s = 50 rad/s sin turbina
-  pid_Motor_A_parametes.Kp = 4.9f;
-  pid_Motor_A_parametes.Ki = 2.5f;
-  pid_Motor_A_parametes.Kd = 0.02f;
-  arm_pid_init_f32(&pid_Motor_A_parametes,1);
-
-  pid_Motor_B_parametes.Kp = 4.0f;
-  pid_Motor_B_parametes.Ki = 1.5f;
-  pid_Motor_B_parametes.Kd = 0.01f;
-  arm_pid_init_f32(&pid_Motor_B_parametes,1);
-  
+  pid_parametes.Kd = 10.0f;
+  arm_pid_init_f32(&pid_parametes,(int32_t)1);
 }
 
 void setup(){
 
   //---Inicializacion de pines---
-  pinMode(led_ind,OUTPUT);
-  //pinMode(starter_pin,INPUT);
-  pinMode(boton,INPUT_PULLUP);
+  pinMode(turbina_pin,OUTPUT);
+  pinMode(led_pin,OUTPUT);
+  pinMode(led2_pin,OUTPUT);
+  digitalWrite(led2_pin,HIGH);
+  pinMode(boton_1_pin,INPUT);
+  pinMode(boton_2_pin,INPUT);
+  pinMode(start_IR_pin,INPUT);
 
-
-  //barra.begin();        //init de barra de sensores
   config_barra();
-  driver_motores.begin(hz_control,steps_per_rev,ISR_encA,ISR_encB);
-  //motorDer.begin(10);   //init de drives para motores DRV8871
-  //motorIzq.begin(10);
+  driver_motores.begin();
   
   //---Inicializacion de protocolos de comunicacion---
   SerialUSB.begin(115200);  
@@ -237,21 +212,30 @@ void setup(){
   //---Configuracion de la logica---
   config_commands();
   config_timer_interrup();
+  config_turbina();
   config_PID();
+
+  //while(digitalRead(boton_1_pin)) cmd.listen();
+  calibrarBarra();
+  while(!digitalRead(start_IR_pin)) cmd.listen();
+  driver_motores.enableDriver(true);
 
   pid_INT->resume();  //Iniciando el TIMER para la interupcion del PID
 }
 
 void loop(){
   cmd.listen();
+
+  check = digitalRead(start_IR_pin);
+
   if(check2){
-    //readpos();
-    debug_port.print("wA = ");
-    debug_port.print(vel_A,3);
-    debug_port.print(",w = ");
-    debug_port.println(vel_B,3);
-    delay(100);
+    values();
   }
-  vsetpoint_a = setpoint;
-  vsetpoint_b = setpoint;
+
+  if(check3){
+    readpos();
+  }
+  
+  
+
 }

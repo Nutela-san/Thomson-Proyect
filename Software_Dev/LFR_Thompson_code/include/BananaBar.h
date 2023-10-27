@@ -69,7 +69,7 @@ class Bar_Sensors{
     }
 
 
-    (w>0.5f)?position = (p/w): position = position;
+    (w>0.2f)?position = (p/w): position = position;
   
     return position;
   }
