@@ -56,7 +56,7 @@ arm_pid_instance_f32 pid_parametes;
 
 
 bool check = false, check2 = false, check3 = false;
-float setpoint = 145;
+float setpoint = 115;
 
 
 //Servo turbina;
@@ -262,9 +262,10 @@ void setup(){
 
   turb->resume();
 
-  setpoint = 145;
+  delay(1000);
 
   //while(digitalRead(boton_1_pin)) cmd.listen();
+  /*
   delay(500);
   calibrarBarra();
   while(!digitalRead(start_IR_pin)) cmd.listen();
@@ -273,24 +274,27 @@ void setup(){
 
   driver_motores.enableDriver(true);
   pid_INT->resume();  //Iniciando el TIMER para la interupcion del PID
+  */
 }
 
 
 void loop(){
-  cmd.listen();
-
-  check = digitalRead(start_IR_pin);
-
-  if(digitalRead(boton_1_pin)){
-    calibrarBarra();
+  driver_motores.enableDriver(true);
+  for(int i = 0; i<255; i++){
+    driver_motores.setPWM(i,i);
+    delay(4);
   }
-
-  if(check2){
-    values();
+  delay(2000);
+  driver_motores.setPWM(0,0);
+  delay(2000);
+  for(int i = 0; i>-255; i--){
+    driver_motores.setPWM(i,i);
+    delay(4);
   }
+  delay(2000);
+  driver_motores.setPWM(0,0);
+  delay(2000);
 
-  if(check3){
-    readpos();
-  }
+
 }
 
