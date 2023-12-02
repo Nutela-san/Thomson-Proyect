@@ -56,7 +56,7 @@ arm_pid_instance_f32 pid_parametes;
 
 
 bool check = false, check2 = false, check3 = false;
-float setpoint = 145;
+float setpoint = 120;
 
 
 //Servo turbina;
@@ -71,10 +71,9 @@ void refresh(){
   arm_pid_init_f32(&pid_parametes, 1);
 }
 
-
 void values(){
   barra.read(sensorValues);
- 
+
   for(int i = 0; i < 8; i++){
     debug_port.print(sensorValues[i]);
     debug_port.print("\t");
@@ -82,11 +81,9 @@ void values(){
   debug_port.print("\n");
 }
 
-
 void list(){
   cmd.list();
 }
-
 
 void config_turbina(){
   turb->pause();
@@ -96,7 +93,6 @@ void config_turbina(){
   /*turbina.attach(turbina_pin);
   turbina.writeMicroseconds(min_turbina);*/
 }
-
 
 void turbina_setPWM(int pwm){
   pwm = constrain(pwm, 0, 255);
@@ -128,7 +124,6 @@ void turbina_enable(bool en){
   }
 }
 
-
 void calibrarBarra(){
   digitalWrite(led_pin,HIGH);
   for(uint8_t i = 0; i<100; i++){
@@ -138,34 +133,28 @@ void calibrarBarra(){
   digitalWrite(led_pin,LOW);
 }
 
-
 void config_barra(){
   barra.setTypeAnalog();
   barra.setSensorPins((const uint8_t[]){PA0, PA1, PA2, PA3, PA4, PA5, PA6, PA7}, 8);
   barra.setEmitterPin(PC15);
 }
 
-
 void readpos(){
   int pos = barra.readLineBlack(vs);
   debug_port.println(pos);
 }
 
-
 void doCheck(){
   check = !check;
 }
-
 
 void doCheck2(){
   check2 = !check2;
 }
 
-
 void doCheck3(){
   check3 = !check3;
 }
-
 
 void config_commands(){
   cmd.enable_echo(true);
@@ -185,12 +174,9 @@ void config_commands(){
   cmd.begin(&debug_port);
 }
 
-
 void PID_ISR(){
-
-
   if(check){
-    driver_motores.enableDriver(1);
+    driver_motores.enableDriver(true);
     turbina_enable(true);
     float error = (3500.0f-(float)barra.readLineBlack(vs))/100.0f;
     float inc_pwm = arm_pid_f32(&pid_parametes, error);
@@ -208,29 +194,22 @@ void PID_ISR(){
   }
 }
 
-
 void config_timer_interrup(){
-
   pid_INT->pause();
   pid_INT->setMode(1,TIMER_DISABLED);   //Config para que solo sirva de contador para interrupt
   pid_INT->setOverflow((uint32_t)hz_control,HERTZ_FORMAT); //Interrupt 1 veces por segundo.
   pid_INT->attachInterrupt(1,PID_ISR);
-
-
   pid_INT->refresh();
 }
 
 void config_PID(){
-  pid_parametes.Kp = 9.0f;
+  pid_parametes.Kp = 12.0f;
   pid_parametes.Ki = 0.0f;
-  pid_parametes.Kd = 27.0f;
+  pid_parametes.Kd = 25.0f;
   arm_pid_init_f32(&pid_parametes,(int32_t)1);
 }
 
-
 void setup(){
-
-
   //---Inicializacion de pines---
   pinMode(turbina_pin,OUTPUT);
   pinMode(led_pin,OUTPUT);
@@ -240,41 +219,34 @@ void setup(){
   pinMode(boton_2_pin,INPUT);
   pinMode(start_IR_pin,INPUT);
 
-
   config_barra();
   driver_motores.begin();
  
   //---Inicializacion de protocolos de comunicacion---
   SerialUSB.begin(115200);  
 
-
   Serial1.setTx(PB6);
   Serial1.setRx(PB7);
   Serial1.begin(9600);
-
 
   //---Configuracion de la logica---
   config_commands();
   config_timer_interrup();
   config_turbina();
-  config_PID();
-
-
   turb->resume();
-
-  setpoint = 145;
+  config_PID();
 
   //while(digitalRead(boton_1_pin)) cmd.listen();
   delay(500);
   calibrarBarra();
   while(!digitalRead(start_IR_pin)) cmd.listen();
   turbina_enable(true);
+  refresh();
   delay(500);
 
   driver_motores.enableDriver(true);
   pid_INT->resume();  //Iniciando el TIMER para la interupcion del PID
 }
-
 
 void loop(){
   cmd.listen();
