@@ -4,9 +4,16 @@
 #include <TB6612.h>
 #include <InterCom.h>
 #include <CMSIS_DSP.h>
+#include <SimpleBarSensor.h>
 
 #define min_turbina 0
 #define max_turbina 255
+
+
+#define total_sensors 8
+const uint8_t pins[total_sensors] = {1,2,3,4,5,6,7,8};
+const int pesos[total_sensors] = {100,75,50,25,-25,-50,-75,-100};
+SimpleBarSensor<total_sensors> bar(pins,9,pesos,true);
 
 
 /*
